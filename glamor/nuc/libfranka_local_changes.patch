@@ -1,0 +1,13 @@
+diff --git a/src/robot_model.cpp b/src/robot_model.cpp
+index 62ad233..a323b2d 100644
+--- a/src/robot_model.cpp
++++ b/src/robot_model.cpp
+@@ -32,7 +32,7 @@ pinocchio::FrameIndex RobotModel::addFrame(const std::string& name,
+ 
+   // Add the new frame to the Pinocchio model
+   pinocchio::FrameIndex new_frame_index = pinocchio_model_.addFrame(pinocchio::Frame(
+-      name, parent_frame.parentJoint, parent_frame_id, placement, pinocchio::OP_FRAME));
++      name, parent_frame.parent, parent_frame_id, placement, pinocchio::OP_FRAME));
+ 
+   return new_frame_index;
+ }

@@ -17,11 +17,14 @@ from tqdm import tqdm
 def export_mp4(svo_file: Path, mp4_dir: Path, stereo_view: str = "left", show_progress: bool = False) -> bool:
     """Reads an SVO file, dumping the export MP4 to the desired path; supports ZED SDK 3.8.* and 4.0.* ONLY."""
     mp4_out = mp4_dir / f"{svo_file.stem}.mp4"
-    sdk_version, use_sdk_4 = sl.Camera().get_sdk_version(), None
-    if not (sdk_version.startswith("4.0") or sdk_version.startswith("3.8")):
-        raise ValueError("Function `export_mp4` only supports ZED SDK 3.8 OR 4.0; if you see this, contact Sidd!")
+    sdk_version = sl.Camera().get_sdk_version()
+    # SDK 4.x and 5.x use similar API; SDK 3.8 uses older API
+    if sdk_version.startswith("4.") or sdk_version.startswith("5."):
+        use_new_sdk = True
+    elif sdk_version.startswith("3.8"):
+        use_new_sdk = False
     else:
-        use_sdk_4 = sdk_version.startswith("4.0")
+        raise ValueError(f"Function `export_mp4` only supports ZED SDK 3.8, 4.x, or 5.x; got {sdk_version}")
 
     # Configure PyZED --> set mostly from SVO Path, don't convert in realtime!
     initial_parameters = sl.InitParameters()
@@ -29,6 +32,7 @@ def export_mp4(svo_file: Path, mp4_dir: Path, stereo_view: str = "left", show_pr
     initial_parameters.svo_real_time_mode = False
     initial_parameters.coordinate_units = sl.UNIT.MILLIMETER
     initial_parameters.camera_image_flip = sl.FLIP_MODE.OFF
+    initial_parameters.depth_mode = sl.DEPTH_MODE.NONE  # Disable depth computation (not needed for video export)
 
     # Create ZED Camera Object & Open SVO File
     zed = sl.Camera()
@@ -38,7 +42,7 @@ def export_mp4(svo_file: Path, mp4_dir: Path, stereo_view: str = "left", show_pr
         return False
 
     # [NOTE SDK SEMANTICS] --> Get Image Size & FPS
-    if use_sdk_4:
+    if use_new_sdk:
         fps = zed.get_camera_information().camera_configuration.fps
         resolution = zed.get_camera_information().camera_configuration.resolution
         width, height = resolution.width, resolution.height
@@ -51,15 +55,16 @@ def export_mp4(svo_file: Path, mp4_dir: Path, stereo_view: str = "left", show_pr
     assert stereo_view in {"left", "right"}, f"Invalid View to Export `{stereo_view}`!"
     img_container = sl.Mat()
 
-    # Create a VideoWriter with the MP4V Codec
+    # Use temporary AVI file, then convert to MP4 with ffmpeg for better compatibility
+    avi_temp = mp4_dir / f"{svo_file.stem}_temp.avi"
     video_writer = cv2.VideoWriter(
-        str(mp4_out),
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        str(avi_temp),
+        cv2.VideoWriter_fourcc(*"XVID"),
         fps,
         (width, height),
     )
     if not video_writer.isOpened():
-        print(f"Error Opening CV2 Video Writer; check the MP4 path `{mp4_out}` and permissions!")
+        print(f"Error Opening CV2 Video Writer; check the path `{avi_temp}` and permissions!")
         zed.close()
         return False
 
@@ -73,27 +78,46 @@ def export_mp4(svo_file: Path, mp4_dir: Path, stereo_view: str = "left", show_pr
         grabbed = zed.grab(rt_parameters)
 
         # [NOTE SDK SEMANTICS] --> ZED SDK 4.0 introduces `sl.ERROR_CODE.END_OF_SVOFILE_REACHED`
-        if (grabbed == sl.ERROR_CODE.SUCCESS) or (use_sdk_4 and (grabbed == sl.ERROR_CODE.END_OF_SVOFILE_REACHED)):
+        if (grabbed == sl.ERROR_CODE.SUCCESS) or (use_new_sdk and (grabbed == sl.ERROR_CODE.END_OF_SVOFILE_REACHED)):
             svo_position = zed.get_svo_position()
             zed.retrieve_image(img_container, {"left": sl.VIEW.LEFT, "right": sl.VIEW.RIGHT}[stereo_view])
 
-            # Copy image data into VideoWrite after converting to RGB
-            rgb = cv2.cvtColor(img_container.get_data(), cv2.COLOR_RGBA2RGB)
-            video_writer.write(rgb)
+            # Copy image data into VideoWriter after converting BGRA to BGR (OpenCV format)
+            # ZED SDK returns BGRA format
+            bgr = cv2.cvtColor(img_container.get_data(), cv2.COLOR_BGRA2BGR)
+            video_writer.write(bgr)
 
             # Update Progress
             if show_progress:
                 pbar.update()
 
             # [NOTE SDK SEMANTICS] --> Check if we've reached the end of the video
-            if (svo_position >= (n_frames - 1)) or (use_sdk_4 and (grabbed == sl.ERROR_CODE.END_OF_SVOFILE_REACHED)):
+            if (svo_position >= (n_frames - 1)) or (use_new_sdk and (grabbed == sl.ERROR_CODE.END_OF_SVOFILE_REACHED)):
                 break
 
-    # Cleanup & Return
+    # Cleanup video writer and ZED
     video_writer.release()
     zed.close()
     if show_progress:
         pbar.close()
+
+    # Convert AVI to MP4 using ffmpeg (H.264 codec for better compatibility)
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(avi_temp), "-c:v", "libopenh264", str(mp4_out)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        # Remove temporary AVI file
+        avi_temp.unlink()
+    except subprocess.CalledProcessError as e:
+        print(f"Error converting {avi_temp} to MP4 with ffmpeg:")
+        print(f"  stderr: {e.stderr}")
+        return False
+    except FileNotFoundError:
+        print("ffmpeg not found. Please install ffmpeg.")
+        return False
 
     return True
 

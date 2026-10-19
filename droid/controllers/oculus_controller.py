@@ -113,12 +113,16 @@ class VRPolicy:
         lin_vel_norm = np.linalg.norm(lin_vel)
         rot_vel_norm = np.linalg.norm(rot_vel)
         gripper_vel_norm = np.linalg.norm(gripper_vel)
+        original_lin_vel = lin_vel
+        original_rot_vel = rot_vel
+        original_gripper_vel = gripper_vel
         if lin_vel_norm > self.max_lin_vel:
             lin_vel = lin_vel * self.max_lin_vel / lin_vel_norm
         if rot_vel_norm > self.max_rot_vel:
             rot_vel = rot_vel * self.max_rot_vel / rot_vel_norm
         if gripper_vel_norm > self.max_gripper_vel:
             gripper_vel = gripper_vel * self.max_gripper_vel / gripper_vel_norm
+        # print(f"Difference in lin vel: {original_lin_vel - lin_vel}, difference in rot vel: {original_rot_vel - rot_vel}, difference in gripper vel: {original_gripper_vel - gripper_vel}")
         return lin_vel, rot_vel, gripper_vel
 
     def _calculate_action(self, state_dict, include_info=False):

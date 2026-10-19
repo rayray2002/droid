@@ -23,7 +23,7 @@ class RecordedMultiCameraWrapper:
             cam_type = get_camera_type(serial_number)
             camera_kwargs.get(cam_type, {})
 
-            if f.endswith(".svo"):
+            if f.endswith(".svo") or f.endswith(".svo2"):
                 Reader = SVOReader
             elif f.endswith(".mp4"):
                 Reader = MP4Reader

@@ -13,22 +13,22 @@ from droid.misc.parameters import *
 from droid.misc.transformations import *
 
 # Create Board #
-CHARUCO_BOARD = aruco.CharucoBoard_create(
-    squaresX=CHARUCOBOARD_COLCOUNT,
-    squaresY=CHARUCOBOARD_ROWCOUNT,
+CHARUCO_BOARD = aruco.CharucoBoard(
+    size=(CHARUCOBOARD_COLCOUNT, CHARUCOBOARD_ROWCOUNT),
     squareLength=CHARUCOBOARD_CHECKER_SIZE,
     markerLength=CHARUCOBOARD_MARKER_SIZE,
     dictionary=ARUCO_DICT,
 )
 
 # Detector Params
-detector_params = cv2.aruco.DetectorParameters_create()
+detector_params = cv2.aruco.DetectorParameters()
 detector_params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
 calib_flags = cv2.CALIB_USE_INTRINSIC_GUESS + cv2.CALIB_FIX_PRINCIPAL_POINT + cv2.CALIB_FIX_FOCAL_LENGTH
 
 # Prepare Calibration Info #
 dir_path = os.path.dirname(os.path.realpath(__file__))
 calib_info_filepath = os.path.join(dir_path, "calibration_info.json")
+# print("Calibration info filepath: ", calib_info_filepath)
 
 
 def load_calibration_info(keep_time=False):

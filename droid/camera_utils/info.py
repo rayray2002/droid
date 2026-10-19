@@ -1,10 +1,12 @@
 from droid.misc.parameters import *
 
-camera_type_dict = {
-    hand_camera_id: 0,
-    varied_camera_1_id: 1,
-    varied_camera_2_id: 1,
-}
+# Skip blank serials. An empty id is not a camera, and HDF5 rejects "" as a dataset name.
+_camera_type_entries = (
+    (hand_camera_id, 0),
+    (varied_camera_1_id, 1),
+    (varied_camera_2_id, 1),
+)
+camera_type_dict = {cam_id: cam_type for cam_id, cam_type in _camera_type_entries if cam_id}
 
 camera_type_to_string_dict = {
     0: "hand_camera",
@@ -12,11 +14,12 @@ camera_type_to_string_dict = {
     2: "fixed_camera",
 }
 
-camera_name_dict = {
-    hand_camera_id: "Hand Camera",
-    varied_camera_1_id: "Varied Camera #1",
-    varied_camera_2_id: "Varied Camera #2",
-}
+_camera_name_entries = (
+    (hand_camera_id, "Hand Camera"),
+    (varied_camera_1_id, "Varied Camera #1"),
+    (varied_camera_2_id, "Varied Camera #2"),
+)
+camera_name_dict = {cam_id: name for cam_id, name in _camera_name_entries if cam_id}
 
 
 def get_camera_name(cam_id):

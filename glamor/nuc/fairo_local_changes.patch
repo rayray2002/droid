@@ -1,0 +1,100 @@
+diff --git a/polymetis/polymetis/CMakeLists.txt b/polymetis/polymetis/CMakeLists.txt
+index d58247c35..3daf8edba 100644
+--- a/polymetis/polymetis/CMakeLists.txt
++++ b/polymetis/polymetis/CMakeLists.txt
+@@ -5,7 +5,7 @@
+ cmake_minimum_required(VERSION 3.14)
+ project(polymetis)
+ 
+-set(CMAKE_CXX_FLAGS "-std=c++14")
++set(CMAKE_CXX_FLAGS "-std=c++17")
+ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+ 
+ add_library(protobuf::libprotobuf UNKNOWN IMPORTED)
+diff --git a/polymetis/polymetis/conf/robot_client/franka_hardware.yaml b/polymetis/polymetis/conf/robot_client/franka_hardware.yaml
+index 2d13c1e90..6f298d808 100644
+--- a/polymetis/polymetis/conf/robot_client/franka_hardware.yaml
++++ b/polymetis/polymetis/conf/robot_client/franka_hardware.yaml
+@@ -9,12 +9,12 @@ robot_client:
+     _target_: polymetis.robot_client.metadata.RobotClientMetadata
+     default_Kq: [40, 30, 50, 25, 35, 25, 10]
+     default_Kqd: [4, 6, 5, 5, 3, 2, 1]
+-    default_Kx: [750, 750, 750, 15, 15, 15]
++    default_Kx: [400, 400, 400, 15, 15, 15]
+     default_Kxd: [37, 37, 37, 2, 2, 2]
+     hz: ${hz}
+     robot_model_cfg: ${robot_model}
+   executable_cfg:
+-    robot_ip: "172.16.0.2"
++    robot_ip: "169.254.202.10"
+     control_ip: ${ip}
+     control_port: ${port}
+     readonly: false
+@@ -32,30 +32,30 @@ robot_client:
+       # bounding box of the workspace
+       cartesian_pos_upper:
+         - 1.0
+-        - 0.4
++        - 1.0
+         - 1.0
+       cartesian_pos_lower:
+-        - 0.1
+-        - -0.4
+-        - -0.05
++        - -1.0
++        - -1.0
++        - -1.0
+ 
+       # the remaining limits are set to the original franka limits minus a margin
+       joint_pos_upper: #margin: 0.1 rad
++        - 2.65
++        - 1.68
+         - 2.80
+-        - 1.66
+-        - 2.80
+-        - -0.17
+-        - 2.80
+-        - 3.65
+-        - 2.80
++        - -0.16
++        - 2.70
++        - 4.40
++        - 2.90
+       joint_pos_lower: #margin: 0.1 rad
++        - -2.65
++        - -1.68
+         - -2.80
+-        - -1.66
+-        - -2.80
+-        - -2.97
+-        - -2.80
+-        - 0.08
+-        - -2.80
++        - -2.95
++        - -2.70
++        - 0.45
++        - -2.90
+       joint_vel: #margin: 0.1 rad/s
+         - 2.075
+         - 2.075
+diff --git a/polymetis/polymetis/conf/robot_model/franka_panda.yaml b/polymetis/polymetis/conf/robot_model/franka_panda.yaml
+index 0c7d971a2..5a1520eb8 100644
+--- a/polymetis/polymetis/conf/robot_model/franka_panda.yaml
++++ b/polymetis/polymetis/conf/robot_model/franka_panda.yaml
+@@ -5,7 +5,7 @@ num_dofs: 7
+ ee_link_idx: 7
+ ee_link_name: panda_link8
+ rest_pose: [-0.13935425877571106, -0.020481698215007782, -0.05201413854956627, -2.0691256523132324, 0.05058913677930832, 2.0028650760650635, -0.9167874455451965]
+-joint_limits_low: [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]
+-joint_limits_high: [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973]
++joint_limits_low: [-2.7437, -1.7837, -2.9007, -3.0421, -2.8065, 0.5445, -3.0159]
++joint_limits_high: [2.7437, 1.7837, 2.9007, -0.1518, 2.8065, 4.5169, 3.0159]
+ joint_damping: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+ torque_limits: [87., 87., 87., 87., 12., 12., 12.]
+diff --git a/polymetis/polymetis/src/clients/franka_panda_client/third_party/libfranka b/polymetis/polymetis/src/clients/franka_panda_client/third_party/libfranka
+index c452ba203..c5c66bb25 160000
+--- a/polymetis/polymetis/src/clients/franka_panda_client/third_party/libfranka
++++ b/polymetis/polymetis/src/clients/franka_panda_client/third_party/libfranka
+@@ -1 +1 @@
+-Subproject commit c452ba20397cde846fe2e48d0be94b522ef88dac
++Subproject commit c5c66bb25a987f122bb424549f5e3b283a41d2f2-dirty

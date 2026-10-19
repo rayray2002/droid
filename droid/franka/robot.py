@@ -34,10 +34,26 @@ class FrankaRobot:
 
     def launch_robot(self):
         self._robot = RobotInterface(ip_address="localhost")
-        self._gripper = GripperInterface(ip_address="localhost")
-        self._max_gripper_width = self._gripper.metadata.max_width
+        self._gripper = None
+        self._max_gripper_width = None
+        try:
+            gripper = GripperInterface(ip_address="localhost")
+            gripper.get_state()
+            self._gripper = gripper
+            self._max_gripper_width = gripper.metadata.max_width
+        except Exception as exc:
+            print(f"[robot] Polymetis gripper unavailable ({exc}); arm-only mode.")
         self._ik_solver = RobotIKSolver()
         self._controller_not_loaded = False
+
+    def _disable_gripper(self, reason: str) -> None:
+        if self._has_gripper():
+            print(f"[robot] Disabling Polymetis gripper: {reason}")
+        self._gripper = None
+        self._max_gripper_width = None
+
+    def _has_gripper(self):
+        return getattr(self, "_gripper", None) is not None
 
     def kill_controller(self):
         self._robot_process.kill()
@@ -115,12 +131,23 @@ class FrankaRobot:
                 run_threaded_command(helper_non_blocking)
 
     def update_gripper(self, command, velocity=True, blocking=False):
+        if not self._has_gripper():
+            return
+
         if velocity:
             gripper_delta = self._ik_solver.gripper_velocity_to_delta(command)
             command = gripper_delta + self.get_gripper_position()
 
         command = float(np.clip(command, 0, 1))
-        self._gripper.goto(width=self._max_gripper_width * (1 - command), speed=0.05, force=0.1, blocking=blocking)
+        try:
+            self._gripper.goto(
+                width=self._max_gripper_width * (1 - command),
+                speed=0.05,
+                force=0.1,
+                blocking=blocking,
+            )
+        except Exception as exc:
+            self._disable_gripper(str(exc))
 
     def add_noise_to_joints(self, original_joints, cartesian_noise):
         original_joints = torch.Tensor(original_joints)
@@ -148,7 +175,13 @@ class FrankaRobot:
         return self._robot.get_joint_velocities().tolist()
 
     def get_gripper_position(self):
-        return 1 - (self._gripper.get_state().width / self._max_gripper_width)
+        if not self._has_gripper():
+            return 0.0
+        try:
+            return 1 - (self._gripper.get_state().width / self._max_gripper_width)
+        except Exception as exc:
+            self._disable_gripper(str(exc))
+            return 0.0
 
     def get_ee_pose(self):
         pos, quat = self._robot.get_ee_pose()

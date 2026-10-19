@@ -1,4 +1,5 @@
 from copy import deepcopy
+import os
 
 import cv2
 import numpy as np
@@ -13,13 +14,28 @@ except ModuleNotFoundError:
 
 
 def gather_zed_cameras():
+    """Enumerate ZED devices. If env ``DROID_ZED_OPEN_SERIALS`` is set (comma-separated), only those serials are opened — frees GPU VRAM when running ML on the same GPU."""
     all_zed_cameras = []
+    raw = os.environ.get("DROID_ZED_OPEN_SERIALS", "").strip()
+    allowed = {s.strip() for s in raw.split(",") if s.strip()} if raw else None
+
     try:
         cameras = sl.Camera.get_device_list()
+        print(f"[ZED] Found {len(cameras)} camera(s)")
+        for i, cam in enumerate(cameras):
+            print(f"[ZED]   Camera {i}: serial={cam.serial_number}")
     except NameError:
+        print("[ZED] ERROR: pyzed.sl module not imported - ZED SDK not available")
         return []
 
+    if allowed is not None:
+        print(f"[ZED] Opening only serial(s) from DROID_ZED_OPEN_SERIALS: {sorted(allowed)}")
+
     for cam in cameras:
+        serial = str(cam.serial_number)
+        if allowed is not None and serial not in allowed:
+            print(f"[ZED] Skipping camera serial={serial} (not in filter)")
+            continue
         cam = ZedCamera(cam)
         all_zed_cameras.append(cam)
 
@@ -29,11 +45,18 @@ def gather_zed_cameras():
 resize_func_map = {"cv2": cv2.resize, None: None}
 
 standard_params = dict(
-    depth_minimum_distance=0.1, camera_resolution=sl.RESOLUTION.HD720, depth_stabilization=False, camera_fps=60, camera_image_flip=sl.FLIP_MODE.OFF
+    depth_minimum_distance=0.1,
+    camera_resolution=sl.RESOLUTION.HD720,
+    depth_stabilization=False,
+    camera_fps=int(os.environ.get("DROID_ZED_FPS", "60")),
+    camera_image_flip=sl.FLIP_MODE.OFF,
 )
 
 advanced_params = dict(
-    depth_minimum_distance=0.1, camera_resolution=sl.RESOLUTION.HD2K, depth_stabilization=False, camera_fps=15, camera_image_flip=sl.FLIP_MODE.OFF
+    camera_resolution=sl.RESOLUTION.HD2K,
+    depth_stabilization=False,
+    camera_fps=15,
+    camera_image_flip=sl.FLIP_MODE.OFF,
 )
 
 
@@ -130,6 +153,14 @@ class ZedCamera:
         # Open Camera #
         self._current_params = init_params
         sl_params = sl.InitParameters(**init_params)
+        _depth_env = os.environ.get("DROID_ZED_DEPTH_MODE", "").strip().upper()
+        _depth_map = {
+            "NONE": sl.DEPTH_MODE.NONE,
+            "PERFORMANCE": sl.DEPTH_MODE.PERFORMANCE,
+            "ULTRA": sl.DEPTH_MODE.ULTRA,
+            "NEURAL": sl.DEPTH_MODE.NEURAL,
+        }
+        sl_params.depth_mode = _depth_map.get(_depth_env, sl.DEPTH_MODE.ULTRA)
         sl_params.set_from_serial_number(int(self.serial_number))
         sl_params.camera_image_flip = sl.FLIP_MODE.OFF
         status = self._cam.open(sl_params)
@@ -171,15 +202,31 @@ class ZedCamera:
             return frame
         return self.resize_func(frame, self.resizer_resolution)
 
+    def _process_depth_measure(self):
+        """Left DEPTH measure (ZED float32, metres). Same resize path as RGB for pixel alignment."""
+        raw = np.asarray(self._left_depth.get_data(), dtype=np.float32).copy()
+        raw = np.nan_to_num(raw, nan=0.0, posinf=0.0, neginf=0.0)
+        if self.resizer_resolution == (0, 0):
+            return raw
+        # Match cv2.resize(frame, self.resizer_resolution) used by _process_frame for images.
+        return cv2.resize(raw, self.resizer_resolution, interpolation=cv2.INTER_NEAREST)
+
     def read_camera(self):
         # Skip if Read Unnecesary #
         if self.skip_reading:
             return {}, {}
 
-        # Read Camera #
+        # Read Camera (retry up to 3 times on transient grab failures) #
         timestamp_dict = {self.serial_number + "_read_start": time_ms()}
-        err = self._cam.grab(self._runtime)
+        max_retries = 3
+        for attempt in range(max_retries):
+            err = self._cam.grab(self._runtime)
+            if err == sl.ERROR_CODE.SUCCESS:
+                break
+            import time as _time
+            _time.sleep(0.02)
         if err != sl.ERROR_CODE.SUCCESS:
+            print(f"[ZED] WARNING: grab() failed for camera {self.serial_number} after {max_retries} retries: {err}")
             return None
         timestamp_dict[self.serial_number + "_read_end"] = time_ms()
 
@@ -202,12 +249,9 @@ class ZedCamera:
                     self.serial_number + "_left": self._process_frame(self._left_img),
                     self.serial_number + "_right": self._process_frame(self._right_img),
                 }
-        # if self.depth:
-        # 	self._cam.retrieve_measure(self._left_depth, sl.MEASURE.DEPTH, resolution=self.resolution)
-        # 	self._cam.retrieve_measure(self._right_depth, sl.MEASURE.DEPTH_RIGHT, resolution=self.resolution)
-        # 	data_dict['depth'] = {
-        # 		self.serial_number + '_left': self._left_depth.get_data().copy(),
-        # 		self.serial_number + '_right': self._right_depth.get_data().copy()}
+        if self.depth:
+            self._cam.retrieve_measure(self._left_depth, sl.MEASURE.DEPTH, resolution=self.zed_resolution)
+            data_dict["depth"] = {self.serial_number + "_left": self._process_depth_measure()}
         # if self.pointcloud:
         # 	self._cam.retrieve_measure(self._left_pointcloud, sl.MEASURE.XYZRGBA, resolution=self.resolution)
         # 	self._cam.retrieve_measure(self._right_pointcloud, sl.MEASURE.XYZRGBA_RIGHT, resolution=self.resolution)

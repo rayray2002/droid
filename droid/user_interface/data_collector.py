@@ -12,7 +12,7 @@ from droid.misc.parameters import hand_camera_id, droid_version, robot_serial_nu
 
 # Prepare Data Folder #
 dir_path = os.path.dirname(os.path.realpath(__file__))
-data_dir = os.path.join(dir_path, "../../data")
+data_dir = os.path.join(dir_path, "../../data/vd/")
 
 
 class DataCollecter:

@@ -13,9 +13,19 @@ class MultiCameraWrapper:
         self.camera_dict = {cam.serial_number: cam for cam in zed_cameras}
 
         # Set Correct Parameters #
+        _fallback_kw = (
+            camera_kwargs.get("varied_camera")
+            or camera_kwargs.get("hand_camera")
+            or camera_kwargs.get("fixed_camera")
+            or {}
+        )
         for cam_id in self.camera_dict.keys():
             cam_type = get_camera_type(cam_id)
-            curr_cam_kwargs = camera_kwargs.get(cam_type, {})
+            curr_cam_kwargs = dict(camera_kwargs.get(cam_type, {}) or {})
+            # Unknown serial → get_camera_type is None; empty slot kwargs → still defaults (depth=False).
+            # Apply the same kwargs we pass for varied/hand cameras so optional readers (e.g. depth) work.
+            if cam_type is None or not curr_cam_kwargs:
+                curr_cam_kwargs = dict(_fallback_kw)
             self.camera_dict[cam_id].set_reading_parameters(**curr_cam_kwargs)
 
         # Launch Camera #
@@ -83,7 +93,10 @@ class MultiCameraWrapper:
         for cam_id in all_cam_ids:
             if not self.camera_dict[cam_id].is_running():
                 continue
-            data_dict, timestamp_dict = self.camera_dict[cam_id].read_camera()
+            result = self.camera_dict[cam_id].read_camera()
+            if result is None:
+                continue
+            data_dict, timestamp_dict = result
 
             for key in data_dict:
                 full_obs_dict[key].update(data_dict[key])

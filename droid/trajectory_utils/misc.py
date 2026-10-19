@@ -15,7 +15,6 @@ from droid.misc.transformations import change_pose_frame
 from droid.trajectory_utils.trajectory_reader import TrajectoryReader
 from droid.trajectory_utils.trajectory_writer import TrajectoryWriter
 
-
 def collect_trajectory(
     env,
     controller=None,
@@ -81,8 +80,10 @@ def collect_trajectory(
         # Get Action #
         control_timestamps["policy_start"] = time_ms()
         if policy is None:
+            print("Using controller")
             action, controller_action_info = controller.forward(obs, include_info=True)
         else:
+            print("Using policy")
             action = policy.forward(obs)
             controller_action_info = {}
 
@@ -102,8 +103,10 @@ def collect_trajectory(
         # Step Environment #
         control_timestamps["control_start"] = time_ms()
         if skip_action:
+            print("Skipping action")
             action_info = env.create_action_dict(np.zeros_like(action))
         else:
+            print("Stepping to action", action)
             action_info = env.step(action)
         action_info.update(controller_action_info)
 
@@ -282,7 +285,11 @@ def replay_trajectory(
     traj_reader = TrajectoryReader(filepath, read_images=False)
     horizon = traj_reader.length()
 
+    print("Action Horizon: ", horizon)
+
     for i in range(horizon):
+        os.environ["CNT"] = str(int(os.environ["CNT"]) + 1)
+        print(f"Replay step {os.environ['CNT']}")
         # Get HDF5 Data #
         timestep = traj_reader.read_timestep()
 
@@ -292,6 +299,7 @@ def replay_trajectory(
             init_gripper_position = timestep["observation"]["robot_state"]["gripper_position"]
             action = np.concatenate([init_joint_position, [init_gripper_position]])
             env.update_robot(action, action_space="joint_position", blocking=True)
+            print("Updated robot to initial position")
 
         # TODO: Assert Replayability #
         # robot_state = env.get_state()[0]
@@ -312,6 +320,7 @@ def replay_trajectory(
 
         # Follow Trajectory #
         if movement_enabled:
+            print(f"Stepping to action {action}")
             env.step(action)
 
 

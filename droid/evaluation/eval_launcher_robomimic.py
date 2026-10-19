@@ -17,6 +17,26 @@ import robomimic.utils.tensor_utils as TensorUtils
 
 import cv2
 
+
+def _infer_imsize_from_shape_metadata(ckpt_dict):
+    """
+    DROID checkpoints use keys like 'camera/image/hand_camera_left_image'.
+    Robomimic / sim-style checkpoints use e.g. 'agentview_image', 'robot0_eye_in_hand_image'.
+    """
+    all_shapes = ckpt_dict.get("shape_metadata", {}).get("all_shapes", {})
+    for obs_key, shp in all_shapes.items():
+        if "camera/image" in obs_key and isinstance(shp, (list, tuple)) and len(shp) > 0:
+            return int(max(shp))
+    for obs_key, shp in all_shapes.items():
+        if "image" in obs_key.lower() and isinstance(shp, (list, tuple)) and len(shp) >= 2:
+            # Typically CHW or HWC after processing; use largest spatial dim as square resize target
+            return int(max(int(x) for x in shp if x > 1))
+    raise ValueError(
+        "Could not infer camera resolution from checkpoint shape_metadata. Keys: "
+        f"{list(all_shapes.keys())}"
+    )
+
+
 def eval_launcher(variant, run_id, exp_id):
     # Get Directory #
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -40,10 +60,7 @@ def eval_launcher(variant, run_id, exp_id):
     config = json.loads(ckpt_dict["config"])
 
     ### infer image size ###
-    for obs_key in ckpt_dict["shape_metadata"]["all_shapes"].keys():
-        if 'camera/image' in obs_key:
-            imsize = max(ckpt_dict["shape_metadata"]["all_shapes"][obs_key])
-            break
+    imsize = _infer_imsize_from_shape_metadata(ckpt_dict)
 
     ckpt_dict["config"] = json.dumps(config)
     policy, _ = FileUtils.policy_from_checkpoint(ckpt_dict=ckpt_dict, device=device, verbose=True)
@@ -52,45 +69,31 @@ def eval_launcher(variant, run_id, exp_id):
 
     # determine the action space (relative or absolute)
     action_keys = config["train"]["action_keys"]
-    if "action/rel_pos" in action_keys:
+    if "action/rel_pos" in action_keys or "action/cartesian_velocity" in action_keys:
         action_space = "cartesian_velocity"
         for k in action_keys:
-            assert not k.startswith("action/abs_")
-    elif "action/abs_pos" in action_keys:
+            assert not (k.startswith("action/abs_") or k == "action/cartesian_position")
+    elif "action/abs_pos" in action_keys or "action/cartesian_position" in action_keys:
         action_space = "cartesian_position"
         for k in action_keys:
-            assert not k.startswith("action/rel_")
+            assert not (k.startswith("action/rel_") or k == "action/cartesian_velocity")
+    elif tuple(action_keys) == ("actions",) or action_keys == ["actions"]:
+        action_space = "joint_velocity"
     else:
-        raise ValueError
+        raise ValueError(
+            "Unsupported action_keys for eval_launcher_robomimic: "
+            f"{action_keys}. Expected DROID-style rel/abs/cartesian_* keys or ['actions']."
+        )
 
     # determine the action space for the gripper
     if "action/gripper_velocity" in action_keys:
         gripper_action_space = "velocity"
     elif "action/gripper_position" in action_keys:
         gripper_action_space = "position"
-    else:
-        raise ValueError
-
-    # determine the action space (relative or absolute)
-    action_keys = config["train"]["action_keys"]
-    if "action/rel_pos" in action_keys:
-        action_space = "cartesian_velocity"
-        for k in action_keys:
-            assert not k.startswith("action/abs_")
-    elif "action/abs_pos" in action_keys:
-        action_space = "cartesian_position"
-        for k in action_keys:
-            assert not k.startswith("action/rel_")
-    else:
-        raise ValueError
-
-    # determine the action space for the gripper
-    if "action/gripper_velocity" in action_keys:
-        gripper_action_space = "velocity"
-    elif "action/gripper_position" in action_keys:
+    elif action_space == "joint_velocity":
         gripper_action_space = "position"
     else:
-        raise ValueError
+        raise ValueError("Unsupported gripper config for action_keys: " + str(action_keys))
 
     # Prepare Policy Wrapper #
     data_processing_kwargs = dict(
@@ -176,31 +179,38 @@ def get_goal_im(variant, run_id, exp_id):
     config = json.loads(ckpt_dict["config"])
 
     ### infer image size ###
-    imsize = max(ckpt_dict["shape_metadata"]["all_shapes"]["camera/image/hand_camera_left_image"])
+    imsize = _infer_imsize_from_shape_metadata(ckpt_dict)
 
     ckpt_dict["config"] = json.dumps(config)
     policy, _ = FileUtils.policy_from_checkpoint(ckpt_dict=ckpt_dict, device=device, verbose=True)
 
     # determine the action space (relative or absolute)
     action_keys = config["train"]["action_keys"]
-    if "action/rel_pos" in action_keys:
+    if "action/rel_pos" in action_keys or "action/cartesian_velocity" in action_keys:
         action_space = "cartesian_velocity"
         for k in action_keys:
-            assert not k.startswith("action/abs_")
-    elif "action/abs_pos" in action_keys:
+            assert not (k.startswith("action/abs_") or k == "action/cartesian_position")
+    elif "action/abs_pos" in action_keys or "action/cartesian_position" in action_keys:
         action_space = "cartesian_position"
         for k in action_keys:
-            assert not k.startswith("action/rel_")
+            assert not (k.startswith("action/rel_") or k == "action/cartesian_velocity")
+    elif tuple(action_keys) == ("actions",) or action_keys == ["actions"]:
+        action_space = "joint_velocity"
     else:
-        raise ValueError
+        raise ValueError(
+            "Unsupported action_keys for get_goal_im: "
+            f"{action_keys}. Expected DROID-style rel/abs/cartesian_* keys or ['actions']."
+        )
 
     # determine the action space for the gripper
     if "action/gripper_velocity" in action_keys:
         gripper_action_space = "velocity"
     elif "action/gripper_position" in action_keys:
         gripper_action_space = "position"
+    elif action_space == "joint_velocity":
+        gripper_action_space = "position"
     else:
-        raise ValueError
+        raise ValueError("Unsupported gripper config for action_keys: " + str(action_keys))
 
     # Prepare Policy Wrapper #
     data_processing_kwargs = dict(

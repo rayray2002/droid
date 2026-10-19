@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 from droid.calibration.calibration_utils import load_calibration_info
@@ -13,7 +13,14 @@ from droid.misc.transformations import change_pose_frame
 
 
 class RobotEnv(gym.Env):
-    def __init__(self, action_space="cartesian_velocity", gripper_action_space=None, camera_kwargs={}, do_reset=True):
+    def __init__(
+        self,
+        action_space="cartesian_velocity",
+        gripper_action_space=None,
+        camera_kwargs={},
+        do_reset=True,
+        launch_robot=True,
+    ):
         # Initialize Gym Environment
         super().__init__()
 
@@ -35,7 +42,7 @@ class RobotEnv(gym.Env):
 
             self._robot = FrankaRobot()
         else:
-            self._robot = ServerInterface(ip_address=nuc_ip)
+            self._robot = ServerInterface(ip_address=nuc_ip, launch=launch_robot)
 
         # Create Cameras
         self.camera_reader = MultiCameraWrapper(camera_kwargs)
