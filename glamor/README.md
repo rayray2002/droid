@@ -8,7 +8,7 @@ code from that checkout are not included.
 Credentials are never committed: `droid/misc/parameters.py` reads `DROID_SUDO_PASSWORD` from the
 environment; `ubuntu_pro_token` stays empty (only the NUC setup uses it).
 
-`nuc/`: a record of the NUC (polymetis server, 169.254.202.1) as migrated on 2025-09-25: fairo
+`nuc/`: a record of the NUC (polymetis server, 169.254.202.1) as migrated on 2026-09-25: fairo
 `0a01a7f` + `fairo_local_changes.patch` (FR3 limits, robot IP, C++17), libfranka `c5c66bb` (0.18.0)
 + `libfranka_local_changes.patch`, its conda env and bring-up notes. The NUC is a shared lab service;
 this branch does not change it.
